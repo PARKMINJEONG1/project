@@ -1,0 +1,130 @@
+---
+title: "권역별 총 소득과 기부금액의 관계"
+output: md_document
+---
+
+##header2 1. 초록 
+이 보고서의 목적은 '권역별 총 소득과 기부금액의 상관관계'를 분석하는 것이다. 연구에 사용된 자료는 사회복지실태조사 데이터를 사용했다. 이 데이터를 바탕으로 권역별 총 소득 평균을 내었다. 권역별 기부 금액 평균도 내어 소득 평균이 높게 나타난 지역과 기부 금액 평균이 높게 나온 구(자치구)를 비교해 보았다. 이에 따라 소득과 기부금액의 상관분석을 통해 가설을 검증하였으며 한계점과 비판점을 찾아 볼 것이다.
+
+##header2 2. 분석 주제
+사람이 재정적으로 풍요롭다면, 기부 씀씀이도 커질까? 설문지 문항을 보다가 문득 들은 생각이다. 사람들은 대부분 삶이 어려워서, 경제적으로 여유가 없어서 기부를 안한다고 한다. 소득과 기부금액은 상관관곅 있을 까?
+
+##header2 3. 데이터 분석
+
+3-1. 필요한 패키지 불러오기
+```{r}
+
+library(dplyr)
+library(ggplot2)
+library(readxl)
+
+raw_survey <- read_excel("2015_서울복지실태조사_데이터.xlsx")
+```
+
+3-2. 데이터 전처리하기
+```{r}
+survey <- raw_survey
+
+str(survey)
+
+class(survey$area)
+table(survey$area)
+
+list_area <- data.frame(area = c(1:5),
+                        seoul = c("도심권",
+                                  "동북권",
+                                  "서북권",
+                                  "서남권",
+                                  "동남권"))
+survey <- left_join(survey,list_area,id="area")
+#Joining, by = "area"
+```
+권역별 이름으로 변수명을 바꿔주었다.
+
+3-3. 데이터 사용하기
+```{r}
+## 연간 총 소득 (권역별로) ##
+survey<- rename(survey,
+                income = B10_Total)
+summary(survey$income)
+survey$income <- ifelse(survey$income %in% c(0,999999),NA,survey$income)
+table(is.na(survey$income))
+summary(survey$income)
+
+area_income <- survey %>% 
+  filter(!is.na(income)) %>% 
+  group_by(seoul) %>% 
+  summarise(mean_income=mean(income))
+area_income
+
+ggplot(data = area_income,aes(x=seoul,y=mean_income)) + geom_col()
+
+```
+이상치를 결측 처리 한 후 권역별 연간 총소득 평균을 내었다.엉
+도심권이 가장 높을 줄 알았지만 동남권이 가장 높고, 그 다음으로 도심권 그리고 서북권이 높게 나타났다.
+```{r}
+## 기부 의식 ##
+
+table(survey$D15)
+survey<-rename(survey,
+               donation = D15)
+survey$donation <- ifelse(survey$donation %in% c(1,2),"기부했다","기부안했다")
+table(survey$donation)
+qplot(survey$donation)
+
+survey$D16 <-ifelse(survey$D16 == 1, "기부한다","기부안한다")
+table(survey$D16)
+
+```
+최근 1년간 기부 경험이 있냐는 질문의 D15와 기부를 할 마음이 있냐는 질문의 D16을 골라 기부의식을 보았다. 1,2로 되어있는 답변 명을 바꿨다.
+대부분이 기부 경험이 없으며, 기부할 마음이 없다고 한다.
+기부에 대한 생각이 매우 낮은 것을 볼 수 있었다.
+```{r}
+##기부한 사람들 중 기부 금액
+summary(survey$D15_1)
+table(survey$D15_1)
+
+survey<- rename(survey,
+                donation_1 = D15_1)
+survey$donation_1 <- ifelse(survey$donation_1 == 9999999,NA,survey$donation_1)
+table(is.na(survey$donation_1))
+
+area_donation_1 <- survey %>% 
+  filter(!is.na(donation_1)) %>% 
+  group_by(seoul) %>% 
+  summarise(mean_donation_1 = mean(donation_1))
+area_donation_1  ##권역별 기부금 평균
+ggplot(data = area_donation_1,aes(x=seoul,y=mean_donation_1)) + geom_col()
+```
+D15-1 문항에서 기부한 사람들 중 기부금액을 묻는 질문으로 기부 금액 평균을 내보고, 권역별로 평균을 내었다. 기부금액 역시 소득이 가장 높았던 동남권이 가장 높았고 그 다음으로 서남권, 도심권이 따라왔다.
+```{r}
+cor.test(survey$income, survey$donation_1)
+
+ggplot(data = survey, aes(x = survey$income,y=survey$donation_1))+
+  geom_point(size = 2, colour = "red") +
+  xlim(0,40000) +
+  ylim(20,500)
+
+A <- area_income
+B <- area_donation_1
+A <- left_join(A, B , id = "seoul")
+##Joining, by - c("seoul",mean_donation_1")
+
+A %>% arrange(desc(mean_donation_1))
+
+
+ggplot(A, aes(mean_income, mean_donation_1, colour=seoul,group = seoul)) +
+  geom_line() +
+  geom_point() +
+  labs(x = "mean_income", y = "mean_donation_1", 
+       title = "권역별 연간 총 소득과 기부 금액 평균")
+```
+소득이 가장 높은 동남권이 기부금액도 가장 높게 나타나 소득과 기부금액의 상관관계를 알아보았다. p-value 는 0.05보다 작은 0.001218이 나와 유의한 결과임을 알 수 있었지만 상관계수가 0.142015로 두 변수는 아주 약한 상관관계를 가지고 있다고 볼 수 있다.
+권역별 소득과 권역별 기부금액 그래프를 비교하고 내림차순으로 표를 만들었다. 서남권은 소득 평균은 낮지만, 기부 금액 평균은 2위로 높게 나타난 것을 보아 소득과 기부금액이 비례하지 않았다.
+
+##header2 4. 논의
+###header3 한계점 
+눈으로 보기에는 권역별 소득과 기부금액 평균이 비슷한 순서로 나타났지만 상관계수를 볼 때 아주 약간의 상관관계를 보여줬다.이 결과를 한번에 나타낼 수 있는 시각자료를 사용하면 좋았을텐데, 아무리 찾아봐도 그래프가 만들어지지않았다. 그리고 3019명의 응답자 중 기부를 한 사람이 509명 뿐이라서 이들이 기부 금액을 대표하기엔 부족했다.
+
+###header3 추후 분석 방향 
+위 한계점을 보완하기 위해 기부 참여자가 많은 설문지를 이용하면 좋을 것 이다.
